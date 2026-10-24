@@ -6,6 +6,7 @@
 > **Sejak Versi:** `v0.1.0 (2026-10-18)`
 > **Terakhir Diperbarui:** `2026-10-24`
 > **Riwayat Lengkap Perubahan:** Lihat [`CHANGELOG.md`](CHANGELOG.md)
+> **Peta Jalan Menuju 3-Plane Swarm:** Lihat [`ROADMAP.md`](ROADMAP.md)
 
 Proyek Flight Controller mandiri (*Zero External Library Dependencies* untuk kendali inti) untuk pesawat **Flying Wing / Delta Wing** yang telah teruji terbang (*Flight Proven*) dan dirancang sebagai fondasi menuju **Autonomous Swarm & VTOL**.
 
