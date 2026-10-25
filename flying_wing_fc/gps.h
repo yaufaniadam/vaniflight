@@ -30,6 +30,7 @@ struct GPSState {
   uint32_t sentences_ok       = 0;
   char     last_nmea[64]      = {0};
   bool     fix_valid          = false;
+  bool     course_valid       = false; // True jika course over ground (COG) baru & valid (<= 2.5s)
   uint8_t  fix_type           = 0;     // 0=No Fix, 2=2D, 3=3D
   uint8_t  satellites         = 0;
   float    latitude_deg       = 0.0f;
@@ -135,10 +136,17 @@ public:
       last_baud_try_ms_ = now;
     }
 
-    // Jika frame UBX/NMEA tidak masuk > 2.5 detik, tandai koneksi & fix tidak aktif
-    if (now - last_sentence_ms_ > 2500) {
+    // Pisahkan timeout komunikasi umum, posisi valid, dan course valid (> 2.5 detik)
+    if (!has_comm_ || (now - last_sentence_ms_ > 2500)) {
+      state.connected    = false;
+      state.fix_valid    = false;
+      state.course_valid = false;
+    }
+    if (!has_fix_ || (now - last_fix_ms_ > 2500)) {
       state.fix_valid = false;
-      state.connected = false;
+    }
+    if (!has_course_ || (now - last_course_ms_ > 2500)) {
+      state.course_valid = false;
     }
 
     // Auto-scanner pintar (230400 -> 115200 -> 57600 -> 38400 -> 9600) saat DISARMED
@@ -168,9 +176,14 @@ private:
   char     line_buf_[128];
   uint8_t  line_idx_          = 0;
   uint32_t last_sentence_ms_  = 0;
+  uint32_t last_fix_ms_       = 0;
+  uint32_t last_course_ms_    = 0;
   uint32_t last_baud_try_ms_  = 0;
   uint8_t  scan_step_         = 0;
   bool     baud_locked_       = false;
+  bool     has_comm_          = false;
+  bool     has_fix_           = false;
+  bool     has_course_        = false;
 
   // State machine parser biner u-blox UBX (0xB5 0x62)
   uint8_t  ubx_step_          = 0;
@@ -267,7 +280,9 @@ private:
   }
 
   void processUBXPacket() {
-    last_sentence_ms_ = millis();
+    uint32_t now      = millis();
+    has_comm_         = true;
+    last_sentence_ms_ = now;
     state.connected   = true;
     baud_locked_      = true;
     state.sentences_ok++;
@@ -291,23 +306,35 @@ private:
 
       state.fix_type   = fix_type;
       state.satellites = num_sv;
-      state.altitude_m = (float)h_msl_mm * 1e-3f;
-      state.speed_kmh  = (g_spd_mm > 0) ? ((float)g_spd_mm * 0.0036f) : 0.0f;
-
-      float cog = (float)head_e5 * 1e-5f;
-      while (cog < 0.0f)   cog += 360.0f;
-      while (cog >= 360.0f) cog -= 360.0f;
-      state.course_deg = cog;
 
       snprintf(state.last_nmea, sizeof(state.last_nmea),
                "UBX-NAV-PVT [%04u-%02u-%02u %02u:%02u:%02u UTC] Fix:%uD SV:%u",
                yr, mo, dy, hr, mn, sc, fix_type, num_sv);
 
-      bool fix_ok = ((flags & 0x01) != 0) && (fix_type >= 2) && (num_sv >= 4);
+      float lat_deg = (float)lat_e7 * 1e-7f;
+      float lon_deg = (float)lon_e7 * 1e-7f;
+      bool coord_ok = (lat_deg >= -90.0f && lat_deg <= 90.0f &&
+                       lon_deg >= -180.0f && lon_deg <= 180.0f);
+      bool fix_ok   = ((flags & 0x01) != 0) && (fix_type >= 2) && (num_sv >= 4) && coord_ok;
+
       if (fix_ok) {
+        state.latitude_deg  = lat_deg;
+        state.longitude_deg = lon_deg;
+        state.altitude_m    = (float)h_msl_mm * 1e-3f;
+        state.speed_kmh     = (g_spd_mm > 0) ? ((float)g_spd_mm * 0.0036f) : 0.0f;
+
+        float cog = (float)head_e5 * 1e-5f;
+        while (cog < 0.0f)    cog += 360.0f;
+        while (cog >= 360.0f) cog -= 360.0f;
+        state.course_deg    = cog;
+
         state.fix_valid     = true;
-        state.latitude_deg  = (float)lat_e7 * 1e-7f;
-        state.longitude_deg = (float)lon_e7 * 1e-7f;
+        has_fix_            = true;
+        last_fix_ms_        = now;
+
+        state.course_valid  = true;
+        has_course_         = true;
+        last_course_ms_     = now;
 
         if (!state.home_set && state.satellites >= 5 && fix_type >= 3) {
           setHomeNow();
@@ -316,7 +343,10 @@ private:
           updateHomeNavigation();
         }
       } else {
-        state.fix_valid = false;
+        state.fix_valid    = false;
+        has_fix_           = false;
+        state.course_valid = false;
+        has_course_        = false;
       }
     }
   }
@@ -338,61 +368,144 @@ private:
     }
   }
 
-  // Mendukung kalimat NMEA dari GPS u-blox M10 ($GNGGA/$GNRMC) maupun NEO-6M ($GPGGA/$GPRMC)
-  void processSentence(char *line) {
-    // Kunci baudrate bila menerima kalimat NMEA standar apapun ($GP... / $GN...)
-    if (line[0] == '$' && (strncmp(line, "$GN", 3) == 0 || strncmp(line, "$GP", 3) == 0)) {
-      baud_locked_      = true;
-      state.connected   = true;
-      last_sentence_ms_ = millis();
-      strncpy(state.last_nmea, line, sizeof(state.last_nmea) - 1);
-      state.last_nmea[sizeof(state.last_nmea) - 1] = '\0';
+  static int hexNibble(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+  }
+
+  // Validasi checksum XOR standar NMEA 0183 (*XX di akhir kalimat)
+  static bool verifyAndStripNMEAChecksum(char *line) {
+    if (!line || line[0] != '$') return false;
+    char *star = strchr(line + 1, '*');
+    if (!star) return false;
+
+    int hi = hexNibble(star[1]);
+    int lo = hexNibble(star[2]);
+    if (hi < 0 || lo < 0) return false;
+
+    // Pastikan tidak ada karakter sampah setelah 2 digit hex checksum
+    char tail = star[3];
+    if (tail != '\0' && tail != '\r' && tail != '\n' && tail != ' ') return false;
+
+    uint8_t calc_ck = 0;
+    for (const char *p = line + 1; p < star; ++p) {
+      if (*p == '$' || *p < 0x20 || *p > 0x7E) return false;
+      calc_ck ^= (uint8_t)(*p);
     }
 
+    uint8_t expected_ck = (uint8_t)((hi << 4) | lo);
+    if (calc_ck != expected_ck) return false;
+
+    *star = '\0'; // Potong '*XX' agar field terakhir bersih saat diparsing
+    return true;
+  }
+
+  static bool parseFloatStrict(const char *s, float &out) {
+    if (!s || s[0] == '\0') return false;
+    char *endptr = nullptr;
+    float val = strtof(s, &endptr);
+    if (endptr == s || *endptr != '\0') return false;
+    out = val;
+    return true;
+  }
+
+  bool parseNMEACoord(const char *val_s, const char *dir_s, bool is_lon, float &out_deg) {
+    if (!val_s || val_s[0] == '\0' || !dir_s || dir_s[0] == '\0' || dir_s[1] != '\0') {
+      return false;
+    }
+    char dir = dir_s[0];
+    if (!is_lon && dir != 'N' && dir != 'S') return false;
+    if (is_lon  && dir != 'E' && dir != 'W') return false;
+
+    float raw = 0.0f;
+    if (!parseFloatStrict(val_s, raw) || raw < 0.0f) return false;
+
+    int deg = (int)(raw / 100.0f);
+    float minutes = raw - ((float)deg * 100.0f);
+    if (minutes < 0.0f || minutes >= 60.0f) return false;
+
+    float dec = (float)deg + (minutes / 60.0f);
+    float max_deg = is_lon ? 180.0f : 90.0f;
+    if (dec > max_deg) return false;
+
+    bool negative = (dir == 'S' || dir == 'W');
+    out_deg = negative ? -dec : dec;
+    return true;
+  }
+
+  // Mendukung kalimat NMEA dari GPS u-blox M10 ($GNGGA/$GNRMC) maupun NEO-6M ($GPGGA/$GPRMC)
+  void processSentence(char *line) {
+    if (strncmp(line, "$GN", 3) != 0 && strncmp(line, "$GP", 3) != 0) {
+      return;
+    }
+
+    // Simpan salinan kalimat sebelum '*XX' dipotong untuk tampilan CLI
+    char raw_copy[64];
+    strncpy(raw_copy, line, sizeof(raw_copy) - 1);
+    raw_copy[sizeof(raw_copy) - 1] = '\0';
+
+    // Wajib lulus verifikasi checksum NMEA (*XX) sebelum mengubah state apapun!
+    if (!verifyAndStripNMEAChecksum(line)) {
+      return;
+    }
+
+    has_comm_         = true;
+    last_sentence_ms_ = millis();
+    state.connected   = true;
+    baud_locked_      = true;
+    strncpy(state.last_nmea, raw_copy, sizeof(state.last_nmea) - 1);
+    state.last_nmea[sizeof(state.last_nmea) - 1] = '\0';
+
     if (strncmp(line, "$GPGGA,", 7) == 0 || strncmp(line, "$GNGGA,", 7) == 0) {
+      state.sentences_ok++;
       parseGGA(line + 7);
-      last_sentence_ms_ = millis();
-      state.connected   = true;
-      state.sentences_ok++;
-      baud_locked_      = true;
     } else if (strncmp(line, "$GPRMC,", 7) == 0 || strncmp(line, "$GNRMC,", 7) == 0) {
-      parseRMC(line + 7);
-      last_sentence_ms_ = millis();
-      state.connected   = true;
       state.sentences_ok++;
-      baud_locked_      = true;
+      parseRMC(line + 7);
     }
   }
 
   void parseGGA(char *p) {
     // Format GGA: time,lat,N/S,lon,E/W,fix,sats,hdop,alt,M,...
-    char *tok = strsep(&p, ","); // 1: Time
-    tok = strsep(&p, ",");       // 2: Latitude (ddmm.mmmm)
-    float raw_lat = tok ? atof(tok) : 0.0f;
-    tok = strsep(&p, ",");       // 3: N/S
-    char ns = (tok && tok[0]) ? tok[0] : 'N';
+    char *time_s = strsep(&p, ","); // 1: Time
+    char *lat_s  = strsep(&p, ","); // 2: Latitude (ddmm.mmmm)
+    char *ns_s   = strsep(&p, ","); // 3: N/S
+    char *lon_s  = strsep(&p, ","); // 4: Longitude (dddmm.mmmm)
+    char *ew_s   = strsep(&p, ","); // 5: E/W
+    char *fix_s  = strsep(&p, ","); // 6: Fix quality (0 = invalid, 1/2 = valid)
+    char *sat_s  = strsep(&p, ","); // 7: Number of satellites
+    char *hdop_s = strsep(&p, ","); // 8: HDOP
+    char *alt_s  = strsep(&p, ","); // 9: Altitude ASL (meters)
 
-    tok = strsep(&p, ",");       // 4: Longitude (dddmm.mmmm)
-    float raw_lon = tok ? atof(tok) : 0.0f;
-    tok = strsep(&p, ",");       // 5: E/W
-    char ew = (tok && tok[0]) ? tok[0] : 'E';
-
-    tok = strsep(&p, ",");       // 6: Fix quality (0 = invalid, 1/2 = valid)
-    int fix_q = tok ? atoi(tok) : 0;
-
-    tok = strsep(&p, ",");       // 7: Number of satellites
-    state.satellites = tok ? (uint8_t)atoi(tok) : 0;
-
-    strsep(&p, ",");             // 8: HDOP
-    tok = strsep(&p, ",");       // 9: Altitude ASL (meters)
-    if (tok && tok[0]) {
-      state.altitude_m = atof(tok);
+    if (!time_s || !lat_s || !ns_s || !lon_s || !ew_s || !fix_s || !sat_s || !hdop_s || !alt_s) {
+      state.fix_valid    = false;
+      has_fix_           = false;
+      state.course_valid = false;
+      has_course_        = false;
+      return;
     }
 
-    if (fix_q > 0 && state.satellites >= 4) {
+    int fix_q = (fix_s[0] != '\0') ? atoi(fix_s) : 0;
+    int sats  = (sat_s[0] != '\0') ? atoi(sat_s) : 0;
+    state.satellites = (uint8_t)((sats > 0) ? sats : 0);
+
+    float lat_deg = 0.0f;
+    float lon_deg = 0.0f;
+    float alt_m   = 0.0f;
+    bool coord_ok = parseNMEACoord(lat_s, ns_s, false, lat_deg) &&
+                    parseNMEACoord(lon_s, ew_s, true,  lon_deg);
+    bool alt_ok   = parseFloatStrict(alt_s, alt_m);
+
+    if (fix_q > 0 && sats >= 4 && coord_ok && alt_ok) {
+      state.fix_type      = 3;
+      state.latitude_deg  = lat_deg;
+      state.longitude_deg = lon_deg;
+      state.altitude_m    = alt_m;
       state.fix_valid     = true;
-      state.latitude_deg  = convertNMEADegMin(raw_lat, ns == 'S');
-      state.longitude_deg = convertNMEADegMin(raw_lon, ew == 'W');
+      has_fix_            = true;
+      last_fix_ms_        = millis();
 
       // Kunci titik Home otomatis pertama kali dapat >= 5 satelit
       if (!state.home_set && state.satellites >= 5) {
@@ -402,37 +515,70 @@ private:
         updateHomeNavigation();
       }
     } else {
-      state.fix_valid = false;
+      state.fix_type     = 0;
+      state.fix_valid    = false;
+      has_fix_           = false;
+      state.course_valid = false;
+      has_course_        = false;
     }
   }
 
   void parseRMC(char *p) {
     // Format RMC: time,status(A/V),lat,N/S,lon,E/W,speed(knots),course(deg),...
-    strsep(&p, ","); // 1: Time
-    char *status = strsep(&p, ","); // 2: A=Active, V=Void
-    if (!status || status[0] != 'A') return;
+    char *time_s   = strsep(&p, ","); // 1: Time
+    char *status_s = strsep(&p, ","); // 2: A=Active, V=Void
+    char *lat_s    = strsep(&p, ","); // 3: Lat
+    char *ns_s     = strsep(&p, ","); // 4: N/S
+    char *lon_s    = strsep(&p, ","); // 5: Lon
+    char *ew_s     = strsep(&p, ","); // 6: E/W
+    char *spd_s    = strsep(&p, ","); // 7: Ground speed (knots)
+    char *cog_s    = strsep(&p, ","); // 8: Course Over Ground (Heading 0..360 deg)
 
-    strsep(&p, ","); // 3: Lat
-    strsep(&p, ","); // 4: N/S
-    strsep(&p, ","); // 5: Lon
-    strsep(&p, ","); // 6: E/W
-
-    char *spd_knots = strsep(&p, ","); // 7: Ground speed (knots)
-    if (spd_knots && spd_knots[0]) {
-      state.speed_kmh = atof(spd_knots) * 1.852f;
+    if (!time_s || !status_s || status_s[0] != 'A') {
+      state.fix_valid    = false;
+      has_fix_           = false;
+      state.course_valid = false;
+      has_course_        = false;
+      return;
     }
 
-    char *cog = strsep(&p, ","); // 8: Course Over Ground (Heading 0..360 deg)
-    if (cog && cog[0]) {
-      state.course_deg = atof(cog);
+    float lat_deg = 0.0f;
+    float lon_deg = 0.0f;
+    if (!parseNMEACoord(lat_s, ns_s, false, lat_deg) ||
+        !parseNMEACoord(lon_s, ew_s, true,  lon_deg)) {
+      state.fix_valid    = false;
+      has_fix_           = false;
+      state.course_valid = false;
+      has_course_        = false;
+      return;
     }
-  }
 
-  float convertNMEADegMin(float val, bool negative) {
-    int deg = (int)(val / 100.0f);
-    float minutes = val - (deg * 100.0f);
-    float dec = (float)deg + (minutes / 60.0f);
-    return negative ? -dec : dec;
+    // Jika fix GGA sudah aktif dan segar, perbarui juga koordinat dari RMC
+    if (state.fix_valid && has_fix_ && (millis() - last_fix_ms_ <= 2500)) {
+      state.latitude_deg  = lat_deg;
+      state.longitude_deg = lon_deg;
+    }
+
+    float spd_knots = 0.0f;
+    if (parseFloatStrict(spd_s, spd_knots) && spd_knots >= 0.0f) {
+      state.speed_kmh = spd_knots * 1.852f;
+    }
+
+    float cog = 0.0f;
+    if (parseFloatStrict(cog_s, cog)) {
+      while (cog < 0.0f)    cog += 360.0f;
+      while (cog >= 360.0f) cog -= 360.0f;
+      state.course_deg   = cog;
+      state.course_valid = true;
+      has_course_        = true;
+      last_course_ms_    = millis();
+      if (state.fix_valid && state.home_set) {
+        updateHomeNavigation();
+      }
+    } else {
+      state.course_valid = false;
+      has_course_        = false;
+    }
   }
 
   void updateHomeNavigation() {
@@ -454,11 +600,13 @@ private:
     while (heading_err < -180.0f) heading_err += 360.0f;
 
     // Jika sudah sampai di atas titik Home (< 20 meter), berputar melingkar (Loiter) dengan miring +20 derajat
-    if (state.dist_to_home_m < 20.0f) {
+    if (state.dist_to_home_m < RTH_HOME_RADIUS_M) {
       state.rth_roll_cmd_deg = 20.0f;
-    } else {
+    } else if (state.course_valid) {
       // Belokkan sayap menuju titik Home (maksimal miring 30 derajat)
-      state.rth_roll_cmd_deg = constrain(heading_err * 0.6f, -30.0f, 30.0f);
+      state.rth_roll_cmd_deg = constrain(heading_err * 0.6f, -MAX_NAV_ROLL_DEG, MAX_NAV_ROLL_DEG);
+    } else {
+      state.rth_roll_cmd_deg = 15.0f;
     }
 
     // Jaga ketinggian pulang minimal 40 meter di atas titik lepas landas (Home)

@@ -170,6 +170,16 @@
   #define LED_ON_STATE        HIGH
 #endif
 
+#ifndef PIN_GPS_UART_TX
+  #define PIN_GPS_UART_TX     8
+#endif
+#ifndef PIN_GPS_UART_RX
+  #define PIN_GPS_UART_RX     9
+#endif
+#ifndef GPS_SERIAL
+  #define GPS_SERIAL          Serial2
+#endif
+
 // ============================================================================
 // 3. KONFIGURASI LOOP & FILTER IMU
 // ============================================================================

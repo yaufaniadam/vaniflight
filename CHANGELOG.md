@@ -25,6 +25,10 @@ Semua perubahan penting pada arsitektur *firmware*, algoritma kendali, fitur kes
   - `SwC (CH9 - 3 Pos)` = **`MODE_MANUAL`** / **`MODE_ANGLE`** / **`MODE_ALT_HOLD`**
   - `SwD (CH10 - 3 Pos)` = **Servo AutoTrim & Auto-Level Pitch Trim**
   - Menambahkan *Coordinated Turn Assist* pada `MODE_RTH` dan `MODE_ALT_HOLD` serta *fallback* ketinggian GPS MSL pada `MODE_RTH`.
+- **Hardening Validitas Navigasi GPS & Alt-Hold Hasil Audit (`[P1]`/`[P2]`) ([`gps.h`](flying_wing_fc/gps.h), [`pid.h`](flying_wing_fc/pid.h), [`rc_input.h`](flying_wing_fc/rc_input.h)):**
+  - Memisahkan *timeout* komunikasi umum (`last_sentence_ms_`), posisi valid (`last_fix_ms_`), dan *course over ground* valid (`last_course_ms_`, `course_valid`); kalimat `$GNRMC` berstatus `'V'` langsung membatalkan `fix_valid` & `course_valid`, serta `MODE_RTH` mewajibkan posisi dan *course* yang segar ($\le 2.5\text{ detik}$).
+  - Menambahkan verifikasi *checksum* XOR NMEA 0183 (`*XX`) dan pemeriksaan kelengkapan *field* koordinat/ketinggian sebelum memperbarui status GPS atau titik *Home*.
+  - Memperbaiki inisialisasi target `MODE_ALT_HOLD` agar langsung mengunci ketinggian aktual barometer (`locked_alt_target_m = baro.altitude_agl_m`) tanpa melompat ke `25 m` saat diaktifkan pada ketinggian rendah ($\le 5\text{ m}$).
 
 ---
 

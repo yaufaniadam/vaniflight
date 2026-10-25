@@ -79,8 +79,9 @@ public:
   float angle_kp_pitch = ANGLE_KP_PITCH;
 
   // Target ketinggian saat mode Altitude Hold diaktifkan
-  float locked_alt_target_m = 30.0f;
-  FlightMode prev_mode_     = MODE_MANUAL;
+  float locked_alt_target_m    = 0.0f;
+  FlightMode prev_mode_        = MODE_MANUAL;
+  bool prev_alt_hold_active_   = false;
 
   // Hasil akhir perintah kontrol Roll & Pitch (-400..+400 us) untuk dikirim ke Elevon Mixer
   float roll_cmd_us  = 0.0f;
@@ -94,11 +95,13 @@ public:
   }
 
   void update(const RCState &rc, const IMUState &imu, const GPSState &gps, const BaroState &baro, float dt) {
-    // Kunci ketinggian saat ini saat pilot baru saja masuk ke Mode ALT_HOLD
-    if (rc.mode == MODE_ALT_HOLD && prev_mode_ != MODE_ALT_HOLD) {
-      locked_alt_target_m = (baro.altitude_agl_m > 5.0f) ? baro.altitude_agl_m : 25.0f;
+    // Kunci ketinggian aktual saat ini ketika pilot baru saja masuk ke Mode ALT_HOLD dengan Barometer aktif
+    bool alt_hold_active = (rc.mode == MODE_ALT_HOLD && baro.connected);
+    if (alt_hold_active && !prev_alt_hold_active_) {
+      locked_alt_target_m = baro.altitude_agl_m;
     }
-    prev_mode_ = rc.mode;
+    prev_alt_hold_active_ = alt_hold_active;
+    prev_mode_            = rc.mode;
 
     // FAILSAFE SENSOR: Jika sensor IMU putus/rusak/kabel kendor di udara,
     // langsung fallback ke MANUAL PASSTHROUGH agar servo tidak mengunci miring
@@ -118,10 +121,10 @@ public:
       // ======================================================================
       // MODE RTH: Navigasi Otonom Menuju Home (GPS + Barometer)
       // ======================================================================
-      float target_roll_deg  = 15.0f; // Default circling jika belum ada fix GPS
+      float target_roll_deg  = 15.0f; // Default circling jika posisi/course belum valid
       float target_pitch_deg = 2.0f;
 
-      if (gps.fix_valid && gps.home_set) {
+      if (gps.fix_valid && gps.course_valid && gps.home_set) {
         // Sudut miring dihitung dari arah menuju Home (dibatasi +-30 derajat)
         target_roll_deg = gps.rth_roll_cmd_deg;
       }
@@ -151,8 +154,8 @@ public:
       // ======================================================================
       float target_roll_deg = rc.roll_norm * MAX_ROLL_ANGLE_DEG;
 
-      // Pilot bisa menggeser target ketinggian dengan stik pitch (+-4 m/detik)
-      locked_alt_target_m = constrain(locked_alt_target_m + rc.pitch_norm * 4.0f * dt, 5.0f, 150.0f);
+      // Pilot bisa menggeser target ketinggian dari ketinggian aktual dengan stik pitch (+-4 m/detik)
+      locked_alt_target_m = constrain(locked_alt_target_m + rc.pitch_norm * 4.0f * dt, -50.0f, 500.0f);
       float alt_err = locked_alt_target_m - baro.altitude_agl_m;
       float target_pitch_deg = constrain(alt_err * ALT_HOLD_KP, -MAX_NAV_PITCH_DEG, MAX_NAV_PITCH_DEG);
 

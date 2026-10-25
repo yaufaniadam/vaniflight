@@ -261,7 +261,7 @@ public:
       // KEAMANAN TINGKAT TINGGI (FAILSAFE):
       // RTH otomatis hanya boleh aktif jika pesawat MEMANG SUDAH ARMED di udara sebelum hilang sinyal!
       // Jika remote mati saat pesawat di darat (Disarmed), pesawat WAJIB TETAP DISARMED (Motor MATI 1000 us)!
-      if (state.armed && !state.bench_test_mode && gps_mgr.state.home_set && gps_mgr.state.fix_valid) {
+      if (state.armed && !state.bench_test_mode && gps_mgr.state.home_set && gps_mgr.state.fix_valid && gps_mgr.state.course_valid) {
         state.mode = MODE_RTH;
         // Tetap armed untuk navigasi otonom terbang pulang ke Home
       } else {
