@@ -2,7 +2,7 @@
  * ============================================================================
  * @file        telemetry_cli.h
  * @project     Flying Wing Autonomous Flight Controller
- * @version     v0.4.2
+ * @version     v0.4.3
  * @since       v0.1.0 (2026-10-18)
  * @updated     2026-10-25
  * @brief       Antarmuka Serial Monitor CLI Interaktif & Streaming Serial Plotter
@@ -16,6 +16,7 @@
  *   - v0.4.1 (2026-10-24): Tampilan versi firmware di banner, validasi kalibrasi [c],
  *                          dan panel diagnostik lengkap Barometer & GPS M10 di [g].
  *   - v0.4.2 (2026-10-25): Tampilkan telemetri paket biner u-blox UBX-NAV-PVT & MSL di menu [g].
+ *   - v0.4.3 (2026-10-25): Tambah perintah [v] untuk uji & pilih mode Beeper di GP15.
  * ============================================================================
  */
 #ifndef TELEMETRY_CLI_H
@@ -31,6 +32,7 @@
 #include "autotrim.h"
 #include "gps.h"
 #include "baro.h"
+#include "beeper.h"
 
 enum StreamMode {
   STREAM_PLOTTER,
@@ -94,6 +96,7 @@ public:
     Serial.println(F("  [2] Balik Arah (Reverse) Servo Sayap Kanan"));
     Serial.println(F("  [c] Kalibrasi Gyro & Titik Datar (Level Trim) di Meja/Tanah"));
     Serial.println(F("  [g] Diagnostik Sensor Barometer BMP280 & GPS RushFPV M10"));
+    Serial.println(F("  [v] Tes Bunyi Beeper (GP15) & Ganti Mode (Hybrid/Active/Passive)"));
     Serial.println(F("  [t] Lihat Status Servo AutoTrim & Auto-Level Trim"));
     Serial.println(F("  [z] Reset Semua Trim (Servo & Level) ke 0"));
     Serial.println(F("  [m] Ganti Mode Terbang Manual -> Acro -> Angle -> AltHold -> RTH"));
@@ -105,7 +108,7 @@ public:
     Serial.println(F("============================================================\n"));
   }
 
-  void update(IMUManager &imu, RCInputManager &rc, FlightControllerPID &pid, ElevonMixer &mixer, AutoTrimManager &autotrim, GPSManager &gps, BaroManager &baro, SettingsManager &settings, uint32_t loop_dt_us) {
+  void update(IMUManager &imu, RCInputManager &rc, FlightControllerPID &pid, ElevonMixer &mixer, AutoTrimManager &autotrim, GPSManager &gps, BaroManager &baro, BeeperManager &beeper, SettingsManager &settings, uint32_t loop_dt_us) {
     // 1. Baca perintah dari pengguna lewat USB Serial Monitor
     while (Serial.available()) {
       char cmd = (char)Serial.read();
@@ -196,21 +199,31 @@ public:
           }
           Serial.println(F("\n[INFO] Mengkalibrasi Gyro & Titik Datar... Jangan gerakkan pesawat!"));
           if (!imu.calibrateGyro(300)) {
+            beeper.playError();
             Serial.println(F("[GAGAL] Kalibrasi Gyro ditolak: IMU tidak terhubung atau pesawat bergerak!\n"));
             break;
           }
           if (!imu.calibrateLevel()) {
+            beeper.playError();
             Serial.println(F("[GAGAL] Kalibrasi Titik Datar ditolak: Kemiringan melebihi batas +-15 derajat!\n"));
             break;
           }
           settings.data.roll_trim_deg  = imu.state.roll_trim_deg;
           settings.data.pitch_trim_deg = imu.state.pitch_trim_deg;
           pid.reset();
+          beeper.playSuccess();
           Serial.print(F("[OK] Kalibrasi selesai! Level Trim -> Roll: "));
           Serial.print(imu.state.roll_trim_deg, 2);
           Serial.print(F(" deg | Pitch: "));
           Serial.print(imu.state.pitch_trim_deg, 2);
           Serial.println(F(" deg (Ketik 'w' untuk simpan ke Flash)\n"));
+          break;
+
+        case 'v':
+        case 'V':
+          beeper.cycleDriveMode();
+          Serial.print(F("\n[BEEPER] Tes bunyi pada GP15 | Mode Driver: "));
+          Serial.println(beeper.getDriveModeName());
           break;
 
         case 'z':
@@ -219,6 +232,7 @@ public:
             Serial.println(F("\n[PERINGATAN] Disarm terlebih dahulu sebelum mereset & menyimpan ke Flash!\n"));
           } else {
             autotrim.resetTrims(mixer, imu.state, settings, false);
+            beeper.playSuccess();
           }
           break;
 
@@ -231,6 +245,7 @@ public:
           Serial.println(F("\n[FLASH] Menyimpan konfigurasi ke EEPROM Flash..."));
           settings.save();
           autotrim.pending_flash_save = false;
+          beeper.playSuccess();
           Serial.println(F("[OK] Tersimpan permanen! Setting tidak akan hilang walau cabut baterai/reboot.\n"));
           break;
 

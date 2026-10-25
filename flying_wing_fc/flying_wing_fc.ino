@@ -2,9 +2,9 @@
  * ============================================================================
  * @file        flying_wing_fc.ino
  * @project     Flying Wing Autonomous Flight Controller (2 Elevon + 1 Motor)
- * @version     v0.4.1
+ * @version     v0.4.3
  * @since       v0.1.0 (2026-10-18)
- * @updated     2026-10-24
+ * @updated     2026-10-25
  * @brief       Program Utama Loop Kendali Real-Time 500 Hz & Orkestrasi Modul
  *
  * Mendukung Multi-Board (Otomatis mendeteksi saat Compile):
@@ -19,6 +19,7 @@
  *   - v0.3.0 (2026-10-24): Hardening keselamatan (IMU fallback, RTH failsafe lock, Board Rotation).
  *   - v0.4.0 (2026-10-24): Integrasi AutoTrimManager (Servo AutoTrim via SwB CH8 + LED indikator).
  *   - v0.4.1 (2026-10-24): Integrasi Auto-Level Pitch Trim dengan Barometer & Auto-Baud GPS.
+ *   - v0.4.3 (2026-10-25): Integrasi BeeperManager non-blocking di GP15 (Boot, GPS Lock, Arm, RTH).
  * ============================================================================
  */
 
@@ -32,6 +33,7 @@
 #include "pid.h"
 #include "mixer.h"
 #include "autotrim.h"
+#include "beeper.h"
 #include "telemetry_cli.h"
 
 #if defined(STM32F4xx) || defined(ARDUINO_ARCH_STM32)
@@ -51,6 +53,7 @@ ElevonMixer         mixer;
 AutoTrimManager     autotrim;
 GPSManager          gps;
 BaroManager         baro;
+BeeperManager       beeper;
 TelemetryCLI        cli;
 
 uint32_t prev_loop_us  = 0;
@@ -103,25 +106,27 @@ void setup() {
   pid.angle_kp_roll         = settings.data.angle_kp;
   pid.angle_kp_pitch        = settings.data.angle_kp;
 
-  // 1. Inisialisasi Output Servo Elevon & Motor ESC (Motor dikunci di 1000 us)
+  // 1. Inisialisasi Output Servo Elevon, Motor ESC (dikunci 1000 us), & Beeper GP15
   mixer.begin();
+  beeper.begin();
 
   // 2. Inisialisasi Receiver RC (sesuai protokol di EEPROM) & Modul GPS
   rc.begin(settings.data.rc_protocol);
   gps.begin();
 
-  // 3. Inisialisasi Sensor Gyro/Accelerometer (MPU6000 onboard via SPI)
+  // 3. Inisialisasi Sensor Gyro/Accelerometer (MPU6000 onboard via SPI / MPU6050 I2C)
   imu.begin();
 
   #if defined(HAS_BAROMETER) && (HAS_BAROMETER == 1)
     baro.begin();
   #endif
 
-  // 4. Tampilkan panduan di Serial Monitor
+  // 4. Tampilkan panduan di Serial Monitor & bunyikan nada Boot Ready
   if (has_saved) {
     Serial.println(F("\n[EEPROM] Konfigurasi tersimpan berhasil dimuat dari Flash!"));
   }
   cli.printBanner(imu, baro, settings);
+  beeper.playBoot();
 
   prev_loop_us = micros();
 }
@@ -163,8 +168,9 @@ void loop() {
   // 6. Campurkan (Mix) sinyal Pitch & Roll ke 2 Servo Elevon + 1 ESC Motor Brushless
   mixer.update(pid.roll_cmd_us, pid.pitch_cmd_us, rc.state);
 
-  // 7. Kirim data ke USB Serial Monitor / Plotter & cek perintah keyboard
-  cli.update(imu, rc, pid, mixer, autotrim, gps, baro, settings, dt_us);
+  // 7. Update Beeper Indikator Non-Blocking (GP15) & CLI Serial Monitor
+  beeper.update(rc.state, gps.state, autotrim);
+  cli.update(imu, rc, pid, mixer, autotrim, gps, baro, beeper, settings, dt_us);
 
   // 8. Update Indikator LED:
   //    - Berkedip cepat (100 ms) Kuning = AUTOTRIM AKTIF

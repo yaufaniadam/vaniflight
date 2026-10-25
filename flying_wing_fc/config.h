@@ -2,7 +2,7 @@
  * ============================================================================
  * @file        config.h
  * @project     Flying Wing Autonomous Flight Controller
- * @version     v0.4.2
+ * @version     v0.4.3
  * @since       v0.1.0 (2026-10-18)
  * @updated     2026-10-25
  * @brief       Konfigurasi Pinout Multi-Board, Sensor, Filter IMU, PID, & Trim
@@ -14,6 +14,7 @@
  *   - v0.4.0 (2026-10-24): Aktifkan HAS_BAROMETER di RP2040 & batas Auto-Level Trim.
  *   - v0.4.1 (2026-10-24): Tambah makro versi firmware FW_VERSION_STR & tanggal rilis.
  *   - v0.4.2 (2026-10-25): Default GPS_BAUD_RATE 230400 baud untuk biner u-blox UBX-NAV-PVT M10.
+ *   - v0.4.3 (2026-10-25): Tambah konfigurasi PIN_BEEPER pada GP15 (RP2040-Zero).
  * ============================================================================
  */
 #ifndef CONFIG_H
@@ -22,7 +23,7 @@
 #include <Arduino.h>
 
 // [Since v0.4.1 - 2026-10-24] Identitas Versi Firmware Resmi
-#define FW_VERSION_STR        "v0.4.2"
+#define FW_VERSION_STR        "v0.4.3"
 #define FW_RELEASE_DATE       "2026-10-25"
 
 // ============================================================================
@@ -60,7 +61,9 @@
   #define PIN_PWM_CH2_PITCH   3   // GP3
   #define PIN_PWM_CH3_THR     6   // GP6
   #define PIN_PWM_CH4_ARM     7   // GP7
-  #define PIN_PWM_CH5_MODE    15  // GP15
+  #define PIN_PWM_CH5_MODE    13  // GP13
+  // Pin Beeper / Buzzer Indikator (GP15, tepat di sebelah GP14 ESC)
+  #define PIN_BEEPER          15  // GP15 -> Kaki (+) Buzzer (Kaki (-) ke GND)
   // Pin UART0 Receiver (Serial1: GP0 = TX, GP1 = RX)
   #define PIN_RC_UART_TX      0   // GP0
   #define PIN_RC_UART_RX      1   // GP1
@@ -178,6 +181,9 @@
 #endif
 #ifndef GPS_SERIAL
   #define GPS_SERIAL          Serial2
+#endif
+#ifndef PIN_BEEPER
+  #define PIN_BEEPER          15
 #endif
 
 // ============================================================================

@@ -1,11 +1,22 @@
 # Changelog — VaniFlight (Autonomous Flying Wing Flight Controller)
 
 > **Dokumen:** `CHANGELOG.md`
-> **Versi Dokumen:** `v0.4.2`
+> **Versi Dokumen:** `v0.4.3`
 > **Sejak Versi:** `v0.1.0 (2026-10-18)`
 > **Terakhir Diperbarui:** `2026-10-25`
 
 Semua perubahan penting pada arsitektur *firmware*, algoritma kendali, fitur keselamatan, dan dokumentasi dicatat di dokumen ini berdasarkan versi rilis.
+
+---
+
+## [`v0.4.3`] — 2026-10-25 (Modul Non-Blocking Beeper / Buzzer Indikator pada `GP15`)
+
+### Ditambahkan
+- **Modul [`beeper.h`](flying_wing_fc/beeper.h) — Non-Blocking Beeper State Machine (`PIN_BEEPER = GP15`):**
+  - Mendukung buzzer 2-kaki murah baik jenis **Active (DC HIGH)** maupun **Passive (2.5 kHz Tone)** melalui mode *Hybrid* (`BEEPER_MODE_HYBRID`) dan penguat arus pin silikon RP2040 `12 mA`.
+  - Menggunakan *pure SIO GPIO* (`GPIO_FUNC_SIO`) dan *repeating timer* sehingga 100% bebas konflik dengan *Hardware PWM Slice 7A* pada `GP14` (`PIN_MOTOR_ESC`) dan tidak menambah *blocking delay* pada *loop* kendali 500 Hz.
+  - Pola bunyi otomatis: **Boot Ready**, **GPS 3D Home Locked** ($\ge 5$ satelit), **Armed / Disarmed**, **Peringatan Arming Throttle Tinggi**, **AutoTrim Selesai**, serta **RTH / Lost Model Beacon** setiap 2 detik.
+  - Perintah CLI **`[v]`** pada [`telemetry_cli.h`](flying_wing_fc/telemetry_cli.h) untuk menguji bunyi dan mengganti mode driver (`HYBRID` $\rightarrow$ `ACTIVE` $\rightarrow$ `PASSIVE`).
 
 ---
 
