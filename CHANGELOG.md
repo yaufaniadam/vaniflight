@@ -1,11 +1,24 @@
 # Changelog — VaniFlight (Autonomous Flying Wing Flight Controller)
 
 > **Dokumen:** `CHANGELOG.md`
-> **Versi Dokumen:** `v0.4.1`
+> **Versi Dokumen:** `v0.4.2`
 > **Sejak Versi:** `v0.1.0 (2026-10-18)`
-> **Terakhir Diperbarui:** `2026-10-24`
+> **Terakhir Diperbarui:** `2026-10-25`
 
 Semua perubahan penting pada arsitektur *firmware*, algoritma kendali, fitur keselamatan, dan dokumentasi dicatat di dokumen ini berdasarkan versi rilis.
+
+---
+
+## [`v0.4.2`] — 2026-10-25 (Parser Biner Native u-blox `UBX-NAV-PVT` 230400 Baud untuk RushFPV M10)
+
+### Ditambahkan & Diperbaiki
+- **Parser Biner Native u-blox `UBX-NAV-PVT` (`0xB5 0x62 0x01 0x07`, 92-byte payload) ([`gps.h`](flying_wing_fc/gps.h), [`config.h`](flying_wing_fc/config.h)):**
+  - Mendukung langsung protokol biner pabrik **RushFPV M10** pada **230400 baud** dengan validasi *checksum* **Fletcher-16 (`CK_A`, `CK_B`)** tanpa memerlukan konfigurasi eksternal via u-center.
+  - Mengekstrak langsung waktu satelit UTC (`year-month-day hour:min:sec`), status *Fix* (`2D`/`3D`), jumlah satelit (`numSV`), koordinat presisi tinggi `lat/lon` ($10^{-7}\text{ deg}$), ketinggian `hMSL` ($\text{mm}$), kecepatan tanah `gSpeed`, dan arah gerak `headMot` pada 10 Hz.
+  - Mempertahankan kompatibilitas ganda (*dual-protocol*) dengan kalimat ASCII NMEA (`$GNGGA`/`$GNRMC`) dan *Auto-Baudrate Scanner* (`230400` $\rightarrow$ `115200` $\rightarrow$ `57600` $\rightarrow$ `38400` $\rightarrow$ `9600`).
+- **Ekspansi Buffer FIFO Hardware UART1 RP2040 (`setFIFOSize(256)`) ([`gps.h`](flying_wing_fc/gps.h)):**
+  - Memperbesar *ring buffer* `Serial2` (`GP9 RX / GP8 TX`) dari default 32 byte menjadi **256 byte** agar paket 100-byte `UBX-NAV-PVT` pada 230400 baud (46 byte per siklus loop 2 ms) tidak pernah mengalami *FIFO overflow*.
+  - Terverifikasi langsung pada perangkat keras: **BMP280 (`0x76`)** + **RushFPV M10 (`GP9 @ 230400 baud`, 18 satelit 3D Fix)** bekerja simultan pada loop 500 Hz.
 
 ---
 

@@ -2,9 +2,9 @@
 
 > **Nama Proyek:** `VaniFlight` *(Yaufani Flight Controller — kebalikan dari INAV)*
 > **Dokumen:** `README.md`
-> **Versi Firmware & Dokumen:** `v0.4.1`
+> **Versi Firmware & Dokumen:** `v0.4.2`
 > **Sejak Versi:** `v0.1.0 (2026-10-18)`
-> **Terakhir Diperbarui:** `2026-10-24`
+> **Terakhir Diperbarui:** `2026-10-25`
 > **Riwayat Lengkap Perubahan:** Lihat [`CHANGELOG.md`](CHANGELOG.md)
 > **Peta Jalan Menuju 3-Plane Swarm:** Lihat [`ROADMAP.md`](ROADMAP.md)
 
@@ -18,7 +18,7 @@ Satu kode sumber yang sama otomatis mendukung **4 keluarga mikrokontroler** saat
 
 ---
 
-## 1. Fitur Utama & Riwayat Kemampuan (`v0.4.1`)
+## 1. Fitur Utama & Riwayat Kemampuan (`v0.4.2`)
 
 | Fitur | Sejak Versi | File Terkait | Deskripsi Teknis |
 | :--- | :---: | :--- | :--- |
@@ -27,7 +27,7 @@ Satu kode sumber yang sama otomatis mendukung **4 keluarga mikrokontroler** saat
 | **Hardware PWM + Slew Limiter** | `v0.2.0` | [`mixer.h`](flying_wing_fc/mixer.h) | PWM silikon RP2040 50 Hz dengan *Phase-Staggering* & pembatas laju `6 µs/2 ms` anti-*brownout* BEC 5V. |
 | **Servo AutoTrim (INAV Style)** | `v0.4.0` | [`autotrim.h`](flying_wing_fc/autotrim.h) | Saklar `SwB` (`CH8`) di Mode `ANGLE`/`ACRO`: transfer kompensasi integral PID ke tengah servo secara *bumpless* & simpan EEPROM otomatis saat *Disarm*. |
 | **Auto-Level Pitch Trim** | `v0.4.1` | [`autotrim.h`](flying_wing_fc/autotrim.h) | Saklar `SwB` (`CH8`) di Mode `MANUAL`: merekam sudut *Pitch* terbang datar (*cruise AoA*) tervalidasi Barometer & penolak belokan pelan. |
-| **Navigasi GPS M10 & Baro BMP280** | `v0.2.0` | [`gps.h`](flying_wing_fc/gps.h), [`baro.h`](flying_wing_fc/baro.h) | *Auto-Baudrate Scanner* GPS (`115200`/`38400`/`57600`/`9600`), penguncian titik Home otomatis ($\ge 5$ satelit), `MODE_ALT_HOLD`, & `MODE_RTH`. |
+| **Navigasi GPS M10 (UBX/NMEA) & Baro BMP280** | `v0.4.2` | [`gps.h`](flying_wing_fc/gps.h), [`baro.h`](flying_wing_fc/baro.h) | Parser biner *native* u-blox `UBX-NAV-PVT` (`230400` baud, Fletcher-16) + NMEA (`115200`–`9600`), penguncian Home ($\ge 5$ satelit), `MODE_ALT_HOLD`, & `MODE_RTH`. |
 | **EEPROM Flash & CLI Interaktif** | `v0.2.0` | [`settings.h`](flying_wing_fc/settings.h), [`telemetry_cli.h`](flying_wing_fc/telemetry_cli.h) | Konfigurasi *live* via USB Serial Monitor (balik arah servo, kalibrasi, diagnostik GPS/Baro, reboot ke BOOTSEL/DFU tanpa tombol fisik). |
 
 ---
@@ -52,7 +52,7 @@ Satu kode sumber yang sama otomatis mendukung **4 keluarga mikrokontroler** saat
 | **Receiver Serial (SBUS / iBUS / CRSF)** | Sinyal `SBUS` / `TX` | **GP1** (`UART0 RX`) | Inverter silikon internal aktif otomatis untuk SBUS |
 | | `RX` Receiver *(khusus ELRS)* | **GP0** (`UART0 TX`) | |
 | **GPS RushFPV M10** | `5V` & `GND` | `5V` & `GND` | |
-| | `TX` GPS | **GP9** (`UART1 RX`) | Auto-Baudrate (`115200`/`38400`/`57600`/`9600`) |
+| | `TX` GPS | **GP9** (`UART1 RX`) | Biner `UBX-NAV-PVT` (`230400` baud) / Auto-Baud NMEA |
 | | `RX` GPS | **GP8** (`UART1 TX`) | |
 
 ---

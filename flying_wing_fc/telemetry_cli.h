@@ -2,9 +2,9 @@
  * ============================================================================
  * @file        telemetry_cli.h
  * @project     Flying Wing Autonomous Flight Controller
- * @version     v0.4.1
+ * @version     v0.4.2
  * @since       v0.1.0 (2026-10-18)
- * @updated     2026-10-24
+ * @updated     2026-10-25
  * @brief       Antarmuka Serial Monitor CLI Interaktif & Streaming Serial Plotter
  *
  * Riwayat Perubahan (Changelog):
@@ -15,6 +15,7 @@
  *                          serta menu status [t] dan reset trim [z].
  *   - v0.4.1 (2026-10-24): Tampilan versi firmware di banner, validasi kalibrasi [c],
  *                          dan panel diagnostik lengkap Barometer & GPS M10 di [g].
+ *   - v0.4.2 (2026-10-25): Tampilkan telemetri paket biner u-blox UBX-NAV-PVT & MSL di menu [g].
  * ============================================================================
  */
 #ifndef TELEMETRY_CLI_H
@@ -92,6 +93,7 @@ public:
     Serial.println(F("  [1] Balik Arah (Reverse) Servo Sayap Kiri"));
     Serial.println(F("  [2] Balik Arah (Reverse) Servo Sayap Kanan"));
     Serial.println(F("  [c] Kalibrasi Gyro & Titik Datar (Level Trim) di Meja/Tanah"));
+    Serial.println(F("  [g] Diagnostik Sensor Barometer BMP280 & GPS RushFPV M10"));
     Serial.println(F("  [t] Lihat Status Servo AutoTrim & Auto-Level Trim"));
     Serial.println(F("  [z] Reset Semua Trim (Servo & Level) ke 0"));
     Serial.println(F("  [m] Ganti Mode Terbang Manual -> Acro -> Angle -> AltHold -> RTH"));
@@ -103,7 +105,7 @@ public:
     Serial.println(F("============================================================\n"));
   }
 
-  void update(IMUManager &imu, RCInputManager &rc, FlightControllerPID &pid, ElevonMixer &mixer, AutoTrimManager &autotrim, const GPSManager &gps, BaroManager &baro, SettingsManager &settings, uint32_t loop_dt_us) {
+  void update(IMUManager &imu, RCInputManager &rc, FlightControllerPID &pid, ElevonMixer &mixer, AutoTrimManager &autotrim, GPSManager &gps, BaroManager &baro, SettingsManager &settings, uint32_t loop_dt_us) {
     // 1. Baca perintah dari pengguna lewat USB Serial Monitor
     while (Serial.available()) {
       char cmd = (char)Serial.read();
@@ -274,23 +276,32 @@ public:
           }
           Serial.print(F("[GPS]  Status  : "));
           if (gps.state.connected) {
-            Serial.print(F("NMEA AKTIF ("));
+            Serial.print(F("TERHUBUNG di GP"));
+            Serial.print(gps.state.active_rx_pin);
+            Serial.print(F(" ("));
             Serial.print(gps.state.baud_rate);
-            Serial.print(F(" baud, Kalimat OK: "));
+            Serial.print(F(" baud, Paket OK: "));
             Serial.print(gps.state.sentences_ok);
             Serial.println(F(")"));
+            Serial.print(F("       Frame   : "));
+            Serial.println(gps.state.last_nmea);
           } else {
-            Serial.print(F("MENUNGGU DATA (Scan "));
+            Serial.print(F("MENUNGGU DATA (Scan GP"));
+            Serial.print(gps.state.active_rx_pin);
+            Serial.print(F(" @ "));
             Serial.print(gps.state.baud_rate);
-            Serial.print(F(" baud, Byte masuk: "));
+            Serial.print(F(" baud, Byte: "));
             Serial.print(gps.state.rx_bytes);
-            Serial.println(F(" | Cek TX GPS->GP9, RX GPS->GP8)"));
+            Serial.println(F(")"));
           }
           Serial.print(F("       Fix     : "));
-          Serial.print(gps.state.fix_valid ? F("3D LOCKED") : F("SEARCHING SKY"));
+          if (gps.state.fix_type == 3) Serial.print(F("3D LOCKED"));
+          else if (gps.state.fix_type == 2) Serial.print(F("2D LOCKED"));
+          else Serial.print(F("SEARCHING SKY"));
           Serial.print(F(" | Satelit: ")); Serial.print(gps.state.satellites);
           Serial.print(F(" | Speed: "));   Serial.print(gps.state.speed_kmh, 1);
-          Serial.println(F(" km/h"));
+          Serial.print(F(" km/h | Alt MSL: ")); Serial.print(gps.state.altitude_m, 1);
+          Serial.println(F(" m"));
           Serial.print(F("       Posisi  : Lat "));
           Serial.print(gps.state.latitude_deg, 6);
           Serial.print(F(" | Lon "));

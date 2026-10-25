@@ -2,9 +2,9 @@
  * ============================================================================
  * @file        config.h
  * @project     Flying Wing Autonomous Flight Controller
- * @version     v0.4.1
+ * @version     v0.4.2
  * @since       v0.1.0 (2026-10-18)
- * @updated     2026-10-24
+ * @updated     2026-10-25
  * @brief       Konfigurasi Pinout Multi-Board, Sensor, Filter IMU, PID, & Trim
  *
  * Riwayat Perubahan (Changelog):
@@ -13,6 +13,7 @@
  *   - v0.3.0 (2026-10-24): Tambah makro BOARD_ROTATION untuk orientasi pemasangan IMU.
  *   - v0.4.0 (2026-10-24): Aktifkan HAS_BAROMETER di RP2040 & batas Auto-Level Trim.
  *   - v0.4.1 (2026-10-24): Tambah makro versi firmware FW_VERSION_STR & tanggal rilis.
+ *   - v0.4.2 (2026-10-25): Default GPS_BAUD_RATE 230400 baud untuk biner u-blox UBX-NAV-PVT M10.
  * ============================================================================
  */
 #ifndef CONFIG_H
@@ -21,8 +22,8 @@
 #include <Arduino.h>
 
 // [Since v0.4.1 - 2026-10-24] Identitas Versi Firmware Resmi
-#define FW_VERSION_STR        "v0.4.1"
-#define FW_RELEASE_DATE       "2026-10-24"
+#define FW_VERSION_STR        "v0.4.2"
+#define FW_RELEASE_DATE       "2026-10-25"
 
 // ============================================================================
 // 1. PILIH JENIS RECEIVER RC YANG DIGUNAKAN
@@ -193,9 +194,9 @@
 #define GYRO_LPF_ALPHA        0.35f   // Low-pass filter gyro (0.1 = sangat halus, 1.0 = tanpa filter)
 
 // Baudrate GPS:
-// - Gunakan 115200 (atau 38400) untuk GPS RushFPV M10
+// - Gunakan 230400 (default protokol biner UBX-NAV-PVT RushFPV M10) atau 115200
 // - Gunakan 9600 untuk GPS biru GY-NEO6MV2
-#define GPS_BAUD_RATE         115200
+#define GPS_BAUD_RATE         230400
 
 // ============================================================================
 // 4. PARAMETER KENDALI & BATAS SUDUT TERBANG (FLYING WING)
