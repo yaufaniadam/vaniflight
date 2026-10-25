@@ -19,6 +19,12 @@ Semua perubahan penting pada arsitektur *firmware*, algoritma kendali, fitur kes
 - **Ekspansi Buffer FIFO Hardware UART1 RP2040 (`setFIFOSize(256)`) ([`gps.h`](flying_wing_fc/gps.h)):**
   - Memperbesar *ring buffer* `Serial2` (`GP9 RX / GP8 TX`) dari default 32 byte menjadi **256 byte** agar paket 100-byte `UBX-NAV-PVT` pada 230400 baud (46 byte per siklus loop 2 ms) tidak pernah mengalami *FIFO overflow*.
   - Terverifikasi langsung pada perangkat keras: **BMP280 (`0x76`)** + **RushFPV M10 (`GP9 @ 230400 baud`, 18 satelit 3D Fix)** bekerja simultan pada loop 500 Hz.
+- **Pemetaan Ulang Saklar Remot & Peningkatan Navigasi RTH / Alt-Hold ([`rc_input.h`](flying_wing_fc/rc_input.h), [`pid.h`](flying_wing_fc/pid.h), [`telemetry_cli.h`](flying_wing_fc/telemetry_cli.h)):**
+  - `SwA (CH7)` = **Return-to-Home (`MODE_RTH`)**
+  - `SwB (CH8)` = **ARM / DISARM**
+  - `SwC (CH9 - 3 Pos)` = **`MODE_MANUAL`** / **`MODE_ANGLE`** / **`MODE_ALT_HOLD`**
+  - `SwD (CH10 - 3 Pos)` = **Servo AutoTrim & Auto-Level Pitch Trim**
+  - Menambahkan *Coordinated Turn Assist* pada `MODE_RTH` dan `MODE_ALT_HOLD` serta *fallback* ketinggian GPS MSL pada `MODE_RTH`.
 
 ---
 

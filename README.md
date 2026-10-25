@@ -25,8 +25,8 @@ Satu kode sumber yang sama otomatis mendukung **4 keluarga mikrokontroler** saat
 | **Madgwick 6-DOF Quaternion AHRS** | `v0.1.0` | [`imu.h`](flying_wing_fc/imu.h) | Estimasi sikap 500 Hz bebas *gimbal lock*, dilengkapi *anti-NaN guard* (`v0.3.0`) & penyelarasan gravitasi instan (`v0.4.1`). |
 | **Cascade PID + Turn Assist** | `v0.1.0` | [`pid.h`](flying_wing_fc/pid.h) | *Outer Angle Loop* $\rightarrow$ *Inner Rate Loop*, *Derivative on Measurement*, *D-term LPF*, & fallback otomatis ke Manual bila IMU/Baro putus (`v0.3.0`/`v0.4.1`). |
 | **Hardware PWM + Slew Limiter** | `v0.2.0` | [`mixer.h`](flying_wing_fc/mixer.h) | PWM silikon RP2040 50 Hz dengan *Phase-Staggering* & pembatas laju `6 µs/2 ms` anti-*brownout* BEC 5V. |
-| **Servo AutoTrim (INAV Style)** | `v0.4.0` | [`autotrim.h`](flying_wing_fc/autotrim.h) | Saklar `SwB` (`CH8`) di Mode `ANGLE`/`ACRO`: transfer kompensasi integral PID ke tengah servo secara *bumpless* & simpan EEPROM otomatis saat *Disarm*. |
-| **Auto-Level Pitch Trim** | `v0.4.1` | [`autotrim.h`](flying_wing_fc/autotrim.h) | Saklar `SwB` (`CH8`) di Mode `MANUAL`: merekam sudut *Pitch* terbang datar (*cruise AoA*) tervalidasi Barometer & penolak belokan pelan. |
+| **Servo AutoTrim (INAV Style)** | `v0.4.0` | [`autotrim.h`](flying_wing_fc/autotrim.h) | Saklar `SwD` (`CH10`) di Mode `ANGLE`: transfer kompensasi integral PID ke tengah servo secara *bumpless* & simpan EEPROM otomatis saat *Disarm*. |
+| **Auto-Level Pitch Trim** | `v0.4.1` | [`autotrim.h`](flying_wing_fc/autotrim.h) | Saklar `SwD` (`CH10`) di Mode `MANUAL`: merekam sudut *Pitch* terbang datar (*cruise AoA*) tervalidasi Barometer & penolak belokan pelan. |
 | **Navigasi GPS M10 (UBX/NMEA) & Baro BMP280** | `v0.4.2` | [`gps.h`](flying_wing_fc/gps.h), [`baro.h`](flying_wing_fc/baro.h) | Parser biner *native* u-blox `UBX-NAV-PVT` (`230400` baud, Fletcher-16) + NMEA (`115200`–`9600`), penguncian Home ($\ge 5$ satelit), `MODE_ALT_HOLD`, & `MODE_RTH`. |
 | **EEPROM Flash & CLI Interaktif** | `v0.2.0` | [`settings.h`](flying_wing_fc/settings.h), [`telemetry_cli.h`](flying_wing_fc/telemetry_cli.h) | Konfigurasi *live* via USB Serial Monitor (balik arah servo, kalibrasi, diagnostik GPS/Baro, reboot ke BOOTSEL/DFU tanpa tombol fisik). |
 
@@ -76,17 +76,17 @@ Satu kode sumber yang sama otomatis mendukung **4 keluarga mikrokontroler** saat
 * **CH2**: Pitch (Elevator — Naik/Turun)
 * **CH3**: Throttle (Gas Motor)
 * **CH4**: Yaw (Rudder)
-* **CH7 (`SwA` — 2 Posisi)**: Saklar **ARM / DISARM** (`< 1500 µs` = Disarmed, `> 1600 µs` = Armed).
-  * *Pengaman Arming*: Motor menolak Arm jika stik Throttle belum di posisi paling bawah (`< 1120 µs`).
-* **CH8 (`SwB` — 2 Posisi)**: Saklar **AutoTrim & Auto-Level** (`> 1650 µs` = Aktif):
-  * Saat di **`MODE_ANGLE` / `MODE_ACRO`**: Menjalankan **Servo AutoTrim** (memindahkan kompensasi integral PID ke titik tengah servo secara *bumpless*).
-  * Saat di **`MODE_MANUAL`**: Menjalankan **Auto-Level Pitch Trim** (merekam referensi sudut *Pitch* terbang mendatar dengan validasi Barometer).
-  * Semua hasil trim langsung bekerja di RAM dan **otomatis disimpan ke Flash EEPROM saat Anda melakukan DISARM (`SwA` OFF)** setelah mendarat.
+* **CH7 (`SwA` — 2 Posisi)**: Saklar **Return-to-Home (`MODE_RTH`)** (`> 1700 µs` = Pulang Otomatis + Loiter di atas Home).
+* **CH8 (`SwB` — 2 Posisi)**: Saklar **ARM / DISARM** (`< 1500 µs` = Disarmed, `> 1600 µs` = Armed).
+  * *Pengaman Arming*: Motor menolak Arm jika stik Throttle belum di posisi paling bawah (`< 1080 µs`).
 * **CH9 (`SwC` — 3 Posisi)**: Saklar **Mode Terbang Utama**:
-  1. Atas (`< 1300 µs`): **MANUAL (Passthrough)** — kendali tangan murni.
+  1. Atas (`< 1300 µs`): **MANUAL (Passthrough)** — kendali tangan & akrobatik murni.
   2. Tengah (`1300 – 1700 µs`): **ANGLE (Auto-Level / Stabilize)** — sayap otomatis kembali datar saat stik dilepas.
-  3. Bawah (`> 1700 µs`): **ACRO (Rate Mode)** — gyro mengunci laju putar sudut.
-* **CH10 (`SwD` — 2 Posisi)**: Saklar **Return-to-Home (`MODE_RTH`)** (`> 1700 µs`).
+  3. Bawah (`> 1700 µs`): **ALT_HOLD (Tahan Ketinggian)** — ketinggian dikunci otomatis oleh Barometer BMP280.
+* **CH10 (`SwD` — 3 Posisi)**: Saklar **AutoTrim & Auto-Level** (`> 1650 µs` = Aktif):
+  * Saat di **`MODE_ANGLE`**: Menjalankan **Servo AutoTrim** (memindahkan kompensasi integral PID ke titik tengah servo secara *bumpless*).
+  * Saat di **`MODE_MANUAL`**: Menjalankan **Auto-Level Pitch Trim** (merekam referensi sudut *Pitch* terbang mendatar dengan validasi Barometer).
+  * Semua hasil trim langsung bekerja di RAM dan **otomatis disimpan ke Flash EEPROM saat Anda melakukan DISARM (`SwB` OFF)** setelah mendarat.
 
 ---
 

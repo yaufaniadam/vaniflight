@@ -2,9 +2,9 @@
  * ============================================================================
  * @file        pid.h
  * @project     Flying Wing Autonomous Flight Controller
- * @version     v0.4.1
+ * @version     v0.4.2
  * @since       v0.1.0 (2026-10-18)
- * @updated     2026-10-24
+ * @updated     2026-10-25
  * @brief       Kendali Cascade PID (Angle -> Rate -> Servo) + Navigasi AltHold & RTH
  *
  * Riwayat Perubahan (Changelog):
@@ -13,6 +13,7 @@
  *   - v0.2.0 (2026-10-20): Tambah Coordinated Turn Pitch Assist, Mode ALT_HOLD, & RTH.
  *   - v0.3.0 (2026-10-24): Fallback otomatis ke Manual Passthrough saat IMU terputus.
  *   - v0.4.1 (2026-10-24): Fallback aman ke Mode ANGLE jika Barometer terputus saat ALT_HOLD/RTH.
+ *   - v0.4.2 (2026-10-25): Tambah Coordinated Turn Assist & backup GPS MSL pada RTH & ALT_HOLD.
  * ============================================================================
  */
 #ifndef PID_H
@@ -117,18 +118,26 @@ public:
       // ======================================================================
       // MODE RTH: Navigasi Otonom Menuju Home (GPS + Barometer)
       // ======================================================================
-      float target_roll_deg  = 15.0f; // Default circling
+      float target_roll_deg  = 15.0f; // Default circling jika belum ada fix GPS
       float target_pitch_deg = 2.0f;
 
       if (gps.fix_valid && gps.home_set) {
         // Sudut miring dihitung dari arah menuju Home (dibatasi +-30 derajat)
         target_roll_deg = gps.rth_roll_cmd_deg;
-        // Ketinggian dijaga pada 40 meter AGL oleh Barometer BMP280 (jika barometer aktif)
-        if (baro.connected) {
-          float alt_err = RTH_TARGET_ALTITUDE_M - baro.altitude_agl_m;
-          target_pitch_deg = constrain(alt_err * ALT_HOLD_KP, -10.0f, MAX_NAV_PITCH_DEG);
-        }
       }
+
+      // Ketinggian dijaga pada 40 meter AGL oleh Barometer BMP280 (atau backup GPS MSL)
+      if (baro.connected) {
+        float alt_err = RTH_TARGET_ALTITUDE_M - baro.altitude_agl_m;
+        target_pitch_deg = constrain(alt_err * ALT_HOLD_KP, -10.0f, MAX_NAV_PITCH_DEG);
+      } else if (gps.fix_valid && gps.home_set) {
+        target_pitch_deg = gps.rth_pitch_cmd_deg;
+      }
+
+      // Coordinated Turn Assist saat berbelok pulang / loiter agar hidung tidak turun
+      float roll_rad = imu.roll_deg * DEG_TO_RAD;
+      float turn_pitch_comp = (1.0f - cosf(roll_rad)) * 12.0f;
+      target_pitch_deg += constrain(turn_pitch_comp, 0.0f, 10.0f);
 
       // Outer Loop: Hitung target laju putar gyro dari selisih sudut
       target_roll_rate_dps  = constrain((target_roll_deg  - imu.roll_deg)  * angle_kp_roll,
@@ -142,10 +151,15 @@ public:
       // ======================================================================
       float target_roll_deg = rc.roll_norm * MAX_ROLL_ANGLE_DEG;
 
-      // Pilot bisa menggeser target ketinggian dengan stik pitch
-      locked_alt_target_m += rc.pitch_norm * 0.15f; // Naik/turun target bertahap
+      // Pilot bisa menggeser target ketinggian dengan stik pitch (+-4 m/detik)
+      locked_alt_target_m = constrain(locked_alt_target_m + rc.pitch_norm * 4.0f * dt, 5.0f, 150.0f);
       float alt_err = locked_alt_target_m - baro.altitude_agl_m;
       float target_pitch_deg = constrain(alt_err * ALT_HOLD_KP, -MAX_NAV_PITCH_DEG, MAX_NAV_PITCH_DEG);
+
+      // Coordinated Turn Assist saat miring belok di Mode ALT_HOLD
+      float roll_rad = imu.roll_deg * DEG_TO_RAD;
+      float turn_pitch_comp = (1.0f - cosf(roll_rad)) * 12.0f;
+      target_pitch_deg += constrain(turn_pitch_comp, 0.0f, 10.0f);
 
       target_roll_rate_dps  = constrain((target_roll_deg  - imu.roll_deg)  * angle_kp_roll,
                                         -MAX_ROLL_RATE_DPS, MAX_ROLL_RATE_DPS);

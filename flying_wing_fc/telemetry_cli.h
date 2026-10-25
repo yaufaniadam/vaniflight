@@ -369,9 +369,10 @@ public:
         Serial.print(F("RC -> CH1:"));      Serial.print(rc.state.roll_us);
         Serial.print(F(" CH2:"));           Serial.print(rc.state.pitch_us);
         Serial.print(F(" CH3:"));           Serial.print(rc.state.throttle_us);
-        Serial.print(F(" | SwA(Arm):"));    Serial.print(rc.state.arm_us);
-        Serial.print(F(" SwB(Trim):"));   Serial.print(rc.state.autotrim_sw_us);
-        Serial.print(F(" SwC(Mode):"));   Serial.print(rc.state.mode_us);
+        Serial.print(F(" | SwA(RTH):"));    Serial.print(rc.state.rth_sw_us);
+        Serial.print(F(" SwB(Arm):"));      Serial.print(rc.state.arm_us);
+        Serial.print(F(" SwC(Mode):"));     Serial.print(rc.state.mode_us);
+        Serial.print(F(" SwD(Trim):"));     Serial.print(rc.state.autotrim_sw_us);
         Serial.print(F(" ["));              Serial.print(rc.getModeName());
         Serial.print(F("] | "));
         if (rc.state.failsafe) {

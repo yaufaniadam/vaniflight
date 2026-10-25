@@ -2,9 +2,9 @@
  * ============================================================================
  * @file        rc_input.h
  * @project     Flying Wing Autonomous Flight Controller
- * @version     v0.4.1
+ * @version     v0.4.2
  * @since       v0.1.0 (2026-10-18)
- * @updated     2026-10-24
+ * @updated     2026-10-25
  * @brief       Multi-Receiver Parser (SBUS, iBUS, CRSF, PPM) & Logika Failsafe
  *
  * Riwayat Perubahan (Changelog):
@@ -13,6 +13,7 @@
  *                          pemetaan switch FlySky 10CH (SwA, SwB, SwC, SwD).
  *   - v0.3.0 (2026-10-24): Pengaman Failsafe RTH (tidak pernah auto-arm saat pesawat Disarmed).
  *   - v0.4.0 (2026-10-24): Pemetaan CH8 (SwB) ke state.autotrim_sw_us untuk AutoTrim/Auto-Level.
+ *   - v0.4.2 (2026-10-25): Remap saklar: SwA(CH7)=RTH, SwB(CH8)=Arm, SwC(CH9)=Manual/Angle/AltHold, SwD(CH10)=AutoTrim.
  * ============================================================================
  */
 #ifndef RC_INPUT_H
@@ -41,10 +42,10 @@ struct RCState {
   uint16_t pitch_us    = 1500;
   uint16_t throttle_us    = 1000;
   uint16_t yaw_us         = 1500;
-  uint16_t arm_us         = 1000;
-  uint16_t autotrim_sw_us = 1000; // CH8 (SwB): AutoTrim Switch
-  uint16_t mode_us        = 1500;
-  uint16_t rth_sw_us      = 1000;
+  uint16_t arm_us         = 1000; // CH8 (SwB): Arm / Disarm
+  uint16_t autotrim_sw_us = 1000; // CH10 (SwD): AutoTrim Switch
+  uint16_t mode_us        = 1500; // CH9 (SwC 3-Pos): Manual / Angle / AltHold
+  uint16_t rth_sw_us      = 1000; // CH7 (SwA): RTH
 
   bool armed           = false;
   bool failsafe        = true;
@@ -247,11 +248,11 @@ public:
       state.pitch_us    = constrain(raw_ch_[1], 1000, 2000); // CH2: Pitch
       state.throttle_us = constrain(raw_ch_[2], 1000, 2000); // CH3: Throttle
       state.yaw_us      = constrain(raw_ch_[3], 1000, 2000); // CH4: Yaw
-      // FlySky 10CH Mapping: CH5=Pot1, CH6=Pot2, CH7=SwA, CH8=SwB, CH9=SwC(3-Pos), CH10=SwD
-      state.arm_us         = constrain(raw_ch_[6], 1000, 2000); // CH7 (SwA): Arm / Disarm
-      state.autotrim_sw_us = constrain(raw_ch_[7], 1000, 2000); // CH8 (SwB): AutoTrim Switch
-      state.mode_us        = constrain(raw_ch_[8], 1000, 2000); // CH9 (SwC 3-Pos): Manual / Angle / Acro
-      state.rth_sw_us      = constrain(raw_ch_[9], 1000, 2000); // CH10 (SwD): RTH
+      // FlySky 10CH Mapping: CH5=Pot1, CH6=Pot2, CH7=SwA, CH8=SwB, CH9=SwC(3-Pos), CH10=SwD(3-Pos)
+      state.rth_sw_us      = constrain(raw_ch_[6], 1000, 2000); // CH7 (SwA): RTH (Return-to-Home)
+      state.arm_us         = constrain(raw_ch_[7], 1000, 2000); // CH8 (SwB): Arm / Disarm
+      state.mode_us        = constrain(raw_ch_[8], 1000, 2000); // CH9 (SwC 3-Pos): Manual / Angle / AltHold
+      state.autotrim_sw_us = constrain(raw_ch_[9], 1000, 2000); // CH10 (SwD 3-Pos): AutoTrim & Auto-Level Switch
 
       updateArmAndMode();
     } else if (millis() - last_valid_ms_ > 500) {
@@ -319,7 +320,7 @@ private:
       } else if (state.mode_us < 1700) {
         state.mode = MODE_ANGLE;
       } else {
-        state.mode = MODE_ACRO;
+        state.mode = MODE_ALT_HOLD;
       }
     }
 
