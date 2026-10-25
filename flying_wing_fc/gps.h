@@ -219,6 +219,21 @@ private:
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
   }
 
+  static float normalizeAngle360(float deg) {
+    if (!isfinite(deg)) return 0.0f;
+    deg = fmodf(deg, 360.0f);
+    if (deg < 0.0f) deg += 360.0f;
+    if (deg >= 360.0f) deg -= 360.0f;
+    return deg;
+  }
+
+  static float wrapAngle180(float deg) {
+    if (!isfinite(deg)) return 0.0f;
+    deg = fmodf(deg + 180.0f, 360.0f);
+    if (deg < 0.0f) deg += 360.0f;
+    return deg - 180.0f;
+  }
+
   // [Since v0.4.2 - 2026-10-25] Parser biner u-blox UBX-NAV-PVT (Class 0x01, ID 0x07, Len 92)
   void parseByte(uint8_t b) {
     switch (ubx_step_) {
@@ -313,20 +328,22 @@ private:
 
       float lat_deg = (float)lat_e7 * 1e-7f;
       float lon_deg = (float)lon_e7 * 1e-7f;
-      bool coord_ok = (lat_deg >= -90.0f && lat_deg <= 90.0f &&
+      float alt_m   = (float)h_msl_mm * 1e-3f;
+      float cog_raw = (float)head_e5 * 1e-5f;
+      bool coord_ok = isfinite(lat_deg) && isfinite(lon_deg) &&
+                      (lat_deg >= -90.0f && lat_deg <= 90.0f &&
                        lon_deg >= -180.0f && lon_deg <= 180.0f);
-      bool fix_ok   = ((flags & 0x01) != 0) && (fix_type >= 2) && (num_sv >= 4) && coord_ok;
+      bool alt_ok   = isfinite(alt_m) && (alt_m >= -1000.0f && alt_m <= 50000.0f);
+      bool cog_ok   = isfinite(cog_raw) && (cog_raw >= -360.0f && cog_raw <= 720.0f);
+      bool fix_ok   = ((flags & 0x01) != 0) && (fix_type >= 2) && (num_sv >= 4) &&
+                      coord_ok && alt_ok && cog_ok;
 
       if (fix_ok) {
         state.latitude_deg  = lat_deg;
         state.longitude_deg = lon_deg;
-        state.altitude_m    = (float)h_msl_mm * 1e-3f;
-        state.speed_kmh     = (g_spd_mm > 0) ? ((float)g_spd_mm * 0.0036f) : 0.0f;
-
-        float cog = (float)head_e5 * 1e-5f;
-        while (cog < 0.0f)    cog += 360.0f;
-        while (cog >= 360.0f) cog -= 360.0f;
-        state.course_deg    = cog;
+        state.altitude_m    = alt_m;
+        state.speed_kmh     = (g_spd_mm > 0 && g_spd_mm <= 500000) ? ((float)g_spd_mm * 0.0036f) : 0.0f;
+        state.course_deg    = normalizeAngle360(cog_raw);
 
         state.fix_valid     = true;
         has_fix_            = true;
@@ -404,9 +421,28 @@ private:
 
   static bool parseFloatStrict(const char *s, float &out) {
     if (!s || s[0] == '\0') return false;
+
+    // Tolak format non-desimal ("nan", "inf", eksponen "1e30", hex "0x1p", spasi)
+    const char *p = s;
+    if (*p == '+' || *p == '-') ++p;
+    bool has_digit = false;
+    bool has_dot   = false;
+    for (; *p != '\0'; ++p) {
+      if (*p >= '0' && *p <= '9') {
+        has_digit = true;
+      } else if (*p == '.' && !has_dot) {
+        has_dot = true;
+      } else {
+        return false;
+      }
+    }
+    if (!has_digit) return false;
+
     char *endptr = nullptr;
     float val = strtof(s, &endptr);
-    if (endptr == s || *endptr != '\0') return false;
+    if (endptr == s || *endptr != '\0' || !isfinite(val) || fabsf(val) > 1e7f) {
+      return false;
+    }
     out = val;
     return true;
   }
@@ -496,7 +532,7 @@ private:
     float alt_m   = 0.0f;
     bool coord_ok = parseNMEACoord(lat_s, ns_s, false, lat_deg) &&
                     parseNMEACoord(lon_s, ew_s, true,  lon_deg);
-    bool alt_ok   = parseFloatStrict(alt_s, alt_m);
+    bool alt_ok   = parseFloatStrict(alt_s, alt_m) && (alt_m >= -1000.0f && alt_m <= 50000.0f);
 
     if (fix_q > 0 && sats >= 4 && coord_ok && alt_ok) {
       state.fix_type      = 3;
@@ -560,15 +596,13 @@ private:
     }
 
     float spd_knots = 0.0f;
-    if (parseFloatStrict(spd_s, spd_knots) && spd_knots >= 0.0f) {
+    if (parseFloatStrict(spd_s, spd_knots) && spd_knots >= 0.0f && spd_knots <= 1000.0f) {
       state.speed_kmh = spd_knots * 1.852f;
     }
 
     float cog = 0.0f;
-    if (parseFloatStrict(cog_s, cog)) {
-      while (cog < 0.0f)    cog += 360.0f;
-      while (cog >= 360.0f) cog -= 360.0f;
-      state.course_deg   = cog;
+    if (parseFloatStrict(cog_s, cog) && cog >= -360.0f && cog <= 720.0f) {
+      state.course_deg   = normalizeAngle360(cog);
       state.course_valid = true;
       has_course_        = true;
       last_course_ms_    = millis();
@@ -595,9 +629,7 @@ private:
     state.bearing_to_home_deg = bearing;
 
     // Hitung selisih arah terbang pesawat (Course Over Ground) dengan arah ke Home (-180..+180)
-    float heading_err = state.bearing_to_home_deg - state.course_deg;
-    while (heading_err >  180.0f) heading_err -= 360.0f;
-    while (heading_err < -180.0f) heading_err += 360.0f;
+    float heading_err = wrapAngle180(state.bearing_to_home_deg - state.course_deg);
 
     // Jika sudah sampai di atas titik Home (< 20 meter), berputar melingkar (Loiter) dengan miring +20 derajat
     if (state.dist_to_home_m < RTH_HOME_RADIUS_M) {
